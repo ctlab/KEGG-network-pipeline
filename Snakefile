@@ -7,7 +7,7 @@ rule all:
         "network/met.kegg.db.rda"
 
 
-# Downloading reactions, preprocessing them, downloading compounds
+## 1. Downloading list of KEGG reactions
 rule getting_reactions_from_KEGG:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
@@ -16,58 +16,63 @@ rule getting_reactions_from_KEGG:
     output:
         "data/kegg_reactions.txt"
     message:
-        "...Downloading reactions' list..."
+        "...Downloading reactions list..."
     shell:
         "python3.9 1_downloading_reactions_list.py"
 
 
+## 2. Compiling RXN files
+# 2a. Downloading a table of reactions in EQUATION format
 rule downloading_KEGG_reactions_content:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
         "data/kegg_reactions.txt",
 
-        "2_creating_reactions_table.py"
+        "2a_downloading_EQUATION_reactions_table.py"
     output:
         "data/kegg_reactions.csv"
     message:
         "...Downloading reactions in EQUATION format for KEGG..."
     shell:
-        "python3.9 2_creating_reactions_table.py"
+        "python3.9 2a_downloading_EQUATION_reactions_table.py"
 
 
+# 2b. Coefficients for reactions in EQUATION format that contain n, m or x are replaced with numeric values
 rule replacing_coefficients:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
         "data/kegg_reactions.csv",
 
-        "3_Replacing_coefficients.py"
+        "2b_replacing_coefficients.py"
     output:
         "data/kegg_reactions_redone.txt",
         "data/kegg_reactions_redone.csv"
     message:
         "...Replacing coefficients for KEGG reactions..."
     shell:
-        "python3.9 3_Replacing_coefficients.py"
+        "python3.9 2b_replacing_coefficients.py"
 
 
+# 2c. MOL files for compounds of the reactions are downloaded
 rule get_compounds_MOL_files:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
         "data/kegg_reactions_redone.csv",
 
-        "4_downloading_KEGG_MOL_files.py"
+        "2c_downloading_KEGG_MOL_files.py"
     output:
         "data/no_mol_files.txt"
     message:
-        "...Downloading MOL-files for KEGG..."
+        "...Downloading MOL files for KEGG..."
     shell:
         "mkdir -p data/MOL_files;"
-        "python3.9 4_downloading_KEGG_MOL_files.py"
+        "python3.9 2c_downloading_KEGG_MOL_files.py"
 
 
+## Extra step for proper RDT execution
 rule pre_RDT:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
@@ -85,23 +90,24 @@ rule pre_RDT:
         "touch $cwd/{output}"
 
 
+## 2d. Compiling RXN files from MOL files
 checkpoint creating_RXN_files:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
         "data/rdt_test_done.txt",
 
-        "5_Make_RXN_files.R"
+        "2d_compiling_RXN_files.R"
     output:
         reactions=directory("data/rxn")
     message:
-        "...Creating RXN files from MOL-files..."
+        "...Compiling RXN files from MOL files..."
     shell:
         "mkdir -p data/rxn;"
-        "Rscript 5_Make_RXN_files.R"
+        "Rscript 2d_compiling_RXN_files.R"
 
 
-## Running RDT
+## 3. Running RDT
 rule performing_RDT:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
@@ -141,31 +147,33 @@ rule aggregate:
         'fi'
 
 
-## Analyse RDT
+## 4. Creating atom mapping tables from RDT output
 rule performing_RDT_results_analysis:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
         "data/rdt_done.txt",
 
-        "7_Rdt_Output_Analysis.R"
+        "4_RDT_output_analysis.R"
     output:
         "rdt_analysis/atom_mapping.csv",
         "rdt_analysis/atom_mapping.Rda"
     message:
-        "...Analysing RDT results and creating atom mapping table..."
+        "...Creating atom mapping tables..."
     shell:
         "mkdir -p rdt_analysis;"
-        "Rscript 7_Rdt_Output_Analysis.R"
+        "Rscript 4_RDT_output_analysis.R"
 
 
-## Making RPAIRS and supplementary files
-rule creating_RPAIRS_and_supplementary_files:
+## 5. Creating supplementary files for network object & metabolites annotation object
+# 5a. Creating supplementary files for network object
+rule creating_network_supplementary_files:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
         "rdt_analysis/atom_mapping.csv",
-        "8_Making_RPAIRS_and_supplementary_files.py"
+
+        "5a_creating_network_supplementary_files.py"
     output:
         "data/atom_mapping_C_atoms.csv",
         "data/rpairs_preprocessing.csv",
@@ -174,44 +182,44 @@ rule creating_RPAIRS_and_supplementary_files:
         "network_files/metabolite2atom.csv",
         "network_files/rpairs_2C.csv"
     message:
-        "...Creating RPAIRS and supplementary files..."
+        "...Creating supplementary files for network object..."
     shell:
         "mkdir -p network_files;"
         "mkdir -p network;"
-        "python3.9 8_Making_RPAIRS_and_supplementary_files.py"
+        "python3.9 5a_creating_network_supplementary_files.py"
 
 
-## Creating met.kegg.db
+# 5b. Downloading KEGG to ChEBI mapping for metabolites annotation object
 rule supp_files_for_met_db_kegg:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
-        "network_files/atoms.csv",
-
-        "9_Creating_met_db_supplementary_files.py"
+        "network_files/atoms.csv"
     output:
         "data/kegg2chebi.tsv"
     message:
-        "...9. Creating met.db supplementary files..."
+        "...Downloading supplementary files for metabolites annotation..."
     shell:
-        "wget http://rest.kegg.jp/conv/chebi/compound -O data/kegg2chebi.tsv"
+        "wget http://rest.kegg.jp/conv/chebi/compound -O {output}"
 
 
+# 5c. Downloading KEGG to HMDB mapping for metabolites annotation object
 rule getting_mapping_tables_for_met_db_kegg:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
     input:
         "data/kegg2chebi.tsv",
 
-        "9_1_Getting_HMDB_mappings.R"
+        "5c_getting_HMDB_mappings.R"
     output:
         "data/HMDB2metabolite.csv"
     message:
-        "...9. Creating met.db supplementary files..."
+        "...Creating supplementary files for metabolites annotation..."
     shell:
-        "Rscript 9_1_Getting_HMDB_mappings.R"
+        "Rscript 5c_getting_HMDB_mappings.R"
 
 
+# 5d. Downloading KEGG to HMDB mapping for metabolites annotation object
 rule converting_mappings_for_met_db_kegg:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
@@ -219,16 +227,18 @@ rule converting_mappings_for_met_db_kegg:
         "data/kegg2chebi.tsv",
         "data/HMDB2metabolite.csv",
 
-        "10_2_Converting_db_IDs.py"
+        "5d_converting_db_IDs.py"
     output:
         "data/HMDB2metabolite_old_ids.csv",
         "data/kegg2chebi_upd.csv"
     message:
-        "...9. Creating met.db supplementary files..."
+        "...Creating supplementary files for metabolites annotation..."
     shell:
-        "python3.9 9_2_Converting_db_IDs.py"
+        "python3.9 5d_converting_db_IDs.py"
 
 
+## 6. Creating network & metabolites annotation objects
+# 6a. Creating metabolites annotation object
 rule creating_met_db_rhea_object:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
@@ -236,16 +246,16 @@ rule creating_met_db_rhea_object:
         "data/HMDB2metabolite_old_ids.csv",
         "data/kegg2chebi_upd.csv",
 
-        "9_3_creating_met.kegg.db.R"
+        "6a_creating_met.kegg.db.R"
     output:
         "network/met.kegg.db.rda"
     message:
-        "...Creating met.kegg.db..."
+        "...Creating metabolites annotation object..."
     shell:
-        "Rscript 9_3_creating_met.kegg.db.R"
+        "Rscript 6a_creating_met.kegg.db.R"
 
 
-## Creating network object
+# 6b. Creating network object
 rule creating_network_object:
     singularity:
         "docker://mariaembio/python3.9_r4.0_java11"
@@ -254,10 +264,10 @@ rule creating_network_object:
         "network_files/reaction2align.csv",
         "network_files/atoms.csv",
 
-        "10_Creating_network_object.R"
+        "6b_creating_network_object.R"
     output:
         "network/network.rda"
     message:
         "...Creating network object..."
     shell:
-        "Rscript 10_Creating_network_object.R"
+        "Rscript 6b_creating_network_object.R"

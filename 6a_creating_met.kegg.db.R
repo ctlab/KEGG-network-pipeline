@@ -12,7 +12,7 @@ setkey(metabolites, metabolite)
 
 
 # mapFrom
-HMDB2metabolite <- fread("HMDB2metabolite_old_ids.csv")
+HMDB2metabolite <- fread("data/HMDB2metabolite_old_ids.csv")
 HMDB2metabolite <- as.data.table(HMDB2metabolite)
 HMDB2metabolite <- HMDB2metabolite[, list(HMDB=HMDB, metabolite=KEGG)]
 setkey(HMDB2metabolite, HMDB)
@@ -41,4 +41,4 @@ setkey(met.kegg.db$anomers$metabolite2base_metabolite, metabolite)
 setkey(met.kegg.db$anomers$base_metabolite2metabolite, base_metabolite)
 
 
-save(met.kegg.db, file="ShinyGAM/data/met.kegg.db.rda")
+save(met.kegg.db, file="network/met.kegg.db.rda")
